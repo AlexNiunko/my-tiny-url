@@ -1,0 +1,7 @@
+ext{
+    versions=[
+            'testcontainers':'1.19.3',
+            'mapstruct':'1.6.3',
+            'lombokMapstructBindingVersion':'0.2.0'
+    ]
+}
