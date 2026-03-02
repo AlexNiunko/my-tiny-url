@@ -16,23 +16,38 @@ import ru.emobile.mytinyurl.repository.TinyUrlRepository;
 import ru.emobile.mytinyurl.service.AliasProducer;
 import ru.emobile.mytinyurl.service.TinyUrlService;
 
-import static ru.emobile.mytinyurl.exception.ExceptionMessages.ALIAS_EXIST;
+import static ru.emobile.mytinyurl.util.ExceptionMessages.ALIAS_EXIST;
+import static ru.emobile.mytinyurl.util.Pages.EXPIRED;
+import static ru.emobile.mytinyurl.util.Pages.NOT_FOUND;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class TinyUrlServiceImpl implements TinyUrlService {
 
+    public static final String REDIRECT = "redirect:";
     private final TinyUrlRepository tinyUrlRepository;
     private final TinyUrlMapper tinyUrlMapper;
     private final AliasProducer aliasProducer;
 
     @Override
+    @Transactional
     public String findUrl(String tinyUrl) {
-
-
-
-        return "";
+        return tinyUrlRepository.getUrl(tinyUrl).map(
+                tiny -> {
+                    log.info("TinyUrl: {} has founded",tinyUrl);
+                    var expire = tiny.getExpire();
+                    if (expire!=null && expire.getExpiredAt().isBefore(LocalDateTime.now())) {
+                        log.info("TinyUrl: {} is expired",tinyUrl);
+                        tinyUrlRepository.delete(tiny);
+                        log.info("TinyUrl: {} has removed from DB as expired",tinyUrl);
+                        return EXPIRED;
+                    } else {
+                        log.info("TinyUrl: {} has founded",tinyUrl);
+                        return REDIRECT + tiny.getUrl();
+                    }
+                }
+        ).orElse(NOT_FOUND);
     }
 
     @Override
@@ -42,17 +57,19 @@ public class TinyUrlServiceImpl implements TinyUrlService {
         Long ttl = request.ttl();
         String tiny = Strings.isNotBlank(alias) ? getTiny(alias) : aliasProducer.getAlias(request.url());
 
-        TinyUrl tinyUrl = tinyUrlMapper.toTinyUrl(request,tiny);
+        TinyUrl tinyUrl = tinyUrlMapper.toTinyUrl(request, tiny);
         ExpireUrl expired = getExpired(ttl);
         tinyUrl.setExpire(expired);
 
         TinyUrl saved = tinyUrlRepository.save(tinyUrl);
+        log.info("TinyUrl is saved ib DB");
 
         return tinyUrlMapper.toTinyUrlResponse(saved.getTiny(), expired);
     }
 
     private ExpireUrl getExpired(Long ttl) {
         if (ttl != null) {
+            log.info("Building expireUrl with ttl - {} seconds",ttl);
             return ExpireUrl.builder()
                     .expiredAt(LocalDateTime.now().plusSeconds(ttl))
                     .build();

@@ -17,13 +17,18 @@ import ru.emobile.mytinyurl.mapper.TinyUrlMapper;
 import ru.emobile.mytinyurl.repository.TinyUrlRepository;
 import ru.emobile.mytinyurl.service.impl.TinyUrlServiceImpl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
-import static ru.emobile.mytinyurl.exception.ExceptionMessages.ALIAS_EXIST;
+import static ru.emobile.mytinyurl.service.impl.TinyUrlServiceImpl.REDIRECT;
+import static ru.emobile.mytinyurl.util.ExceptionMessages.ALIAS_EXIST;
+import static ru.emobile.mytinyurl.util.Pages.EXPIRED;
+import static ru.emobile.mytinyurl.util.Pages.NOT_FOUND;
 
 @ExtendWith(MockitoExtension.class)
 class TinyUrlServiceTest {
@@ -65,23 +70,23 @@ class TinyUrlServiceTest {
 
         var actual = tinyUrlService.createTinyUrl(request);
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
 
         verify(tinyUrlRepository).findByAlias(request.alias());
-        verify(tinyUrlMapper).toTinyUrl(request,request.alias());
+        verify(tinyUrlMapper).toTinyUrl(request, request.alias());
         verify(tinyUrlRepository).save(tinyUrl);
         verify(tinyUrlMapper).toTinyUrlResponse(eq(request.alias()), any(ExpireUrl.class));
 
     }
 
     @Test
-    void shouldReturnResultWithoutAlias(){
+    void shouldReturnResultWithoutAlias() {
         TinyUrlRequest request = new TinyUrlRequest(
                 "https://news.mail.ru/incident/69990471/?frommail=1&md=1",
                 300L,
                 null
         );
-        String alias="test";
+        String alias = "test";
         var now = LocalDateTime.now();
         TinyUrl tinyUrl = TinyUrl.builder()
                 .id(1L)
@@ -100,23 +105,23 @@ class TinyUrlServiceTest {
 
         var actual = tinyUrlService.createTinyUrl(request);
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
 
         verify(aliasProducer).getAlias(request.url());
-        verify(tinyUrlMapper).toTinyUrl(request,alias);
+        verify(tinyUrlMapper).toTinyUrl(request, alias);
         verify(tinyUrlRepository).save(tinyUrl);
         verify(tinyUrlMapper).toTinyUrlResponse(eq(alias), any(ExpireUrl.class));
 
     }
 
     @Test
-    void shouldReturnResultWithoutTtl(){
+    void shouldReturnResultWithoutTtl() {
         TinyUrlRequest request = new TinyUrlRequest(
                 "https://news.mail.ru/incident/69990471/?frommail=1&md=1",
                 null,
                 null
         );
-        String alias="test";
+        String alias = "test";
         var now = LocalDateTime.now();
         TinyUrl tinyUrl = TinyUrl.builder()
                 .id(1L)
@@ -135,17 +140,17 @@ class TinyUrlServiceTest {
 
         var actual = tinyUrlService.createTinyUrl(request);
 
-        Assertions.assertEquals(expected, actual);
+        assertEquals(expected, actual);
 
         verify(aliasProducer).getAlias(request.url());
-        verify(tinyUrlMapper).toTinyUrl(request,alias);
+        verify(tinyUrlMapper).toTinyUrl(request, alias);
         verify(tinyUrlRepository).save(tinyUrl);
-        verify(tinyUrlMapper).toTinyUrlResponse(eq(alias),  isNull());
+        verify(tinyUrlMapper).toTinyUrlResponse(eq(alias), isNull());
 
     }
 
     @Test
-    void shouldThrowExceptionWhenAliasExist(){
+    void shouldThrowExceptionWhenAliasExist() {
         var alias = "test";
         TinyUrlRequest request = new TinyUrlRequest(
                 "https://news.mail.ru/incident/69990471/?frommail=1&md=1",
@@ -167,15 +172,94 @@ class TinyUrlServiceTest {
                 () -> tinyUrlService.createTinyUrl(request)
         );
         var actualMessage = serviceException.getMessage();
-        Assertions.assertEquals(String.format(ALIAS_EXIST, alias),actualMessage);
+        assertEquals(String.format(ALIAS_EXIST, alias), actualMessage);
 
         verify(tinyUrlRepository).findByAlias(request.alias());
         verifyNoMoreInteractions(tinyUrlMapper);
         verifyNoMoreInteractions(tinyUrlRepository);
         verifyNoMoreInteractions(tinyUrlMapper);
+    }
+
+    @Test
+    void shouldFindUrlSuccessfully() {
+        String tinyUrl = "test";
+        var expiredAt = LocalDateTime.now().plusMinutes(5);
+        var url = "www.test.com";
+        ExpireUrl expireUrl = ExpireUrl.builder().id(1L).expiredAt(expiredAt).build();
+        TinyUrl tiny = TinyUrl.builder()
+                .id(1L)
+                .tiny(tinyUrl)
+                .url(url)
+                .expire(expireUrl)
+                .build();
+
+        when(tinyUrlRepository.getUrl(tinyUrl)).thenReturn(Optional.of(tiny));
+
+        String actual = tinyUrlService.findUrl(tinyUrl);
+        String expected = REDIRECT + tiny.getUrl();
+
+        assertEquals(expected,actual);
+        verify(tinyUrlRepository).getUrl(tinyUrl);
 
     }
 
+    @Test
+    void shouldFindUrlReturnExpired() {
+        String tinyUrl = "test";
+        var expiredAt = LocalDateTime.now().minusMinutes(5);
+        var url = "www.test.com";
+        ExpireUrl expireUrl = ExpireUrl.builder().id(1L).expiredAt(expiredAt).build();
+        TinyUrl tiny = TinyUrl.builder()
+                .id(1L)
+                .tiny(tinyUrl)
+                .url(url)
+                .expire(expireUrl)
+                .build();
+
+        when(tinyUrlRepository.getUrl(tinyUrl)).thenReturn(Optional.of(tiny));
+        doNothing().when(tinyUrlRepository).delete(tiny);
+
+        String actual = tinyUrlService.findUrl(tinyUrl);
+
+        assertEquals(EXPIRED,actual);
+        verify(tinyUrlRepository).getUrl(tinyUrl);
+        verify(tinyUrlRepository).delete(tiny);
+
+    }
+
+    @Test
+    void shouldFindUrlSuccessfullyExpireIsNull() {
+        String tinyUrl = "test";
+        var url = "www.test.com";
+        TinyUrl tiny = TinyUrl.builder()
+                .id(1L)
+                .tiny(tinyUrl)
+                .url(url)
+                .expire(null)
+                .build();
+
+        when(tinyUrlRepository.getUrl(tinyUrl)).thenReturn(Optional.of(tiny));
+
+        String actual = tinyUrlService.findUrl(tinyUrl);
+        String expected = REDIRECT + tiny.getUrl();
+
+        assertEquals(expected,actual);
+        verify(tinyUrlRepository).getUrl(tinyUrl);
+
+    }
+
+    @Test
+    void shouldFindUrlReturnNotFound() {
+        String tinyUrl = "test";
+
+        when(tinyUrlRepository.getUrl(tinyUrl)).thenReturn(Optional.empty());
+
+        String actual = tinyUrlService.findUrl(tinyUrl);
+
+        assertEquals(NOT_FOUND,actual);
+        verify(tinyUrlRepository).getUrl(tinyUrl);
+
+    }
 
 
 }

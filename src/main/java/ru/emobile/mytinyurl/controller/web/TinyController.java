@@ -1,4 +1,4 @@
-package ru.emobile.mytinyurl.http;
+package ru.emobile.mytinyurl.controller.web;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
@@ -16,7 +16,7 @@ public class TinyController {
 
     @GetMapping("/{page}")
     public String getPage(@PathVariable String page){
-
-        return "redirect:"+tinyUrlService.findUrl(page);
+        return tinyUrlService.findUrl(page);
     }
+
 }

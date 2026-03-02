@@ -11,6 +11,9 @@ spring:
     change-log: classpath:db/changelog/db.changelog-master.xml
   jpa:
     open-in-view: false
+    show-sql: true
 server:
   port: 8080
-
+scheduler:
+  pool-size: 3
+  interval-ms: 1000000

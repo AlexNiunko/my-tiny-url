@@ -1,4 +1,4 @@
-package ru.emobile.mytinyurl.exception;
+package ru.emobile.mytinyurl.util;
 
 public class ExceptionMessages {
 
